@@ -35,7 +35,7 @@ All work is version-controlled with Git. `notebooks/01_EDA.ipynb` covers Task 1,
 4. `SeniorCitizen` mapped from 0/1 to No/Yes so every categorical column is treated alike.
 5. **Engineered feature `NumServices`** (0–9 subscribed services). Its churn rate is clearly non-linear: 11% at one service, 45% at three and 5% at nine (Figure 6).
 
-The data was split **80/20 with stratification** (5,634 training and 1,409 test customers, both 26.5% churn). Scaling and encoding were placed inside a scikit-learn `Pipeline` with a `ColumnTransformer`, so they are fitted only on training folds:
+The data was split **70/30 with stratification** (`test_size=0.3, random_state=42`, as in the module labs): 4,930 training and 2,113 test customers, both 26.5% churn. Scaling and encoding were placed inside a scikit-learn `Pipeline` with a `ColumnTransformer`, so they are fitted only on training folds:
 - **StandardScaler** on the four numeric columns. KNN distances and LR's regularised weights are otherwise dominated by large-valued columns such as TotalCharges.
 - **One-hot encoding** of the 16 categorical columns (`drop="if_binary"`), giving 27 model inputs. Label encoding was rejected because nominal categories such as payment method have no order.
 
@@ -53,14 +53,14 @@ Two settings were run for every model:
 
 | Model | Grid searched | Best parameters |
 |---|---|---|
-| KNN | K ∈ {5…51}, weights, p ∈ {1, 2}, SMOTE on/off | K = 41, Manhattan (p = 1), uniform, **SMOTE** |
+| KNN | K ∈ {5…51}, weights, p ∈ {1, 2}, SMOTE on/off | K = 41, Manhattan (p = 1), uniform, no SMOTE |
 | LR | C ∈ {0.001…100}, L1/L2, class_weight | C = 0.1, L2, **balanced** |
-| RF | trees {200, 400}, max_depth {6, 10, 15, None}, min_samples_leaf {1, 5, 10}, max_features {sqrt, 0.5}, class_weight | 400 trees, depth 10, leaf 5, sqrt, **balanced** |
+| RF | trees {200, 400}, max_depth {6, 10, 15, None}, min_samples_leaf {1, 5, 10}, max_features {sqrt, 0.5}, class_weight | 400 trees, depth 10, leaf 10, max_features 0.5, **balanced** |
 
-Each model received an imbalance strategy that suits it. LR and RF support `class_weight="balanced"`, which raises the cost of misclassifying a churner by about 2.8×. KNN has no class weights, so SMOTE (Chawla et al., 2002) was placed inside an imbalanced-learn pipeline (Lemaître, Nogueira and Aridas, 2017). This means synthetic churners are only ever created inside training folds and never in validation or test data.
+Each model received an imbalance strategy that suits it. LR and RF support `class_weight="balanced"`, which raises the cost of misclassifying a churner by about 2.8×. KNN has no class weights, so SMOTE (Chawla et al., 2002) was offered inside an imbalanced-learn pipeline (Lemaître, Nogueira and Aridas, 2017), which creates synthetic churners only inside training folds; the search ultimately preferred no resampling for KNN.
 
 ### 3.3 Evaluation criteria
-The positive class is churn. **F1** (the harmonic mean of precision and recall) is the primary metric because it focuses on the minority class. **Recall** measures how many churners are caught, **precision** measures how many retention offers reach real churners, and **ROC-AUC** measures threshold-independent ranking quality. Accuracy is reported but not used for selection. Cross-validation results are given as mean ± standard deviation, and the test set was used once for final scores.
+The positive class is churn. **F1** (the harmonic mean of precision and recall) is the primary metric because it focuses on the minority class. **Recall** measures how many churners are caught, **precision** measures how many retention offers reach real churners, **specificity** measures how many loyal customers are correctly left alone, and **ROC-AUC** measures threshold-independent ranking quality. Accuracy is compared between training and test sets to detect overfitting, but not used for selection. Cross-validation results are given as mean ± standard deviation, and the test set was used once for final scores.
 
 ## 4. Results and Model Evaluation
 
@@ -68,39 +68,51 @@ The positive class is churn. **F1** (the harmonic mean of precision and recall) 
 
 | Model | Setting | Train F1 | CV F1 | CV recall | CV precision | CV AUC |
 |---|---|---|---|---|---|---|
-| KNN | A | 0.680 | 0.544 ± 0.016 | 0.526 | 0.564 | 0.778 |
-| LR | A | 0.602 | 0.593 ± 0.031 | 0.544 | 0.654 | 0.846 |
-| RF | A | 0.997 | 0.548 ± 0.028 | 0.484 | 0.632 | 0.826 |
-| KNN | B | 0.632 | 0.616 ± 0.017 | 0.819 | 0.494 | 0.834 |
-| LR | B | 0.634 | 0.631 ± 0.021 | 0.799 | 0.521 | 0.845 |
-| RF | B | 0.720 | **0.637 ± 0.015** | 0.779 | 0.539 | **0.847** |
+| KNN | A | 0.678 | 0.547 ± 0.016 | 0.526 | 0.570 | 0.780 |
+| LR | A | 0.600 | 0.595 ± 0.022 | 0.547 | 0.654 | 0.844 |
+| RF | A | 0.997 | 0.562 ± 0.016 | 0.498 | 0.645 | 0.829 |
+| KNN | B | 0.624 | 0.610 ± 0.026 | 0.589 | 0.633 | 0.837 |
+| LR | B | 0.630 | 0.628 ± 0.019 | 0.804 | 0.515 | 0.843 |
+| RF | B | 0.716 | **0.632 ± 0.021** | 0.775 | 0.534 | **0.846** |
 
-**Table 2 – Final test-set results (1,409 unseen customers)**
+**Table 2 – Final test-set results (2,113 unseen customers)**
 
-| Model | Setting | Accuracy | Precision | Recall | F1 | ROC-AUC |
-|---|---|---|---|---|---|---|
-| KNN | A | 0.764 | 0.557 | 0.537 | 0.547 | 0.786 |
-| LR | A | 0.804 | 0.654 | 0.556 | 0.601 | 0.842 |
-| RF | A | 0.789 | 0.631 | 0.489 | 0.551 | 0.820 |
-| KNN | B | 0.727 | 0.492 | **0.832** | 0.618 | 0.828 |
-| LR | B | 0.740 | 0.507 | 0.786 | 0.616 | 0.841 |
-| RF | B | 0.759 | **0.531** | 0.794 | **0.637** | **0.844** |
+| Model | Setting | Accuracy | Precision | Recall | Specificity | F1 | ROC-AUC |
+|---|---|---|---|---|---|---|---|
+| KNN | A | 0.767 | 0.565 | 0.528 | 0.853 | 0.546 | 0.788 |
+| LR | A | 0.809 | **0.668** | 0.560 | **0.899** | 0.609 | **0.845** |
+| RF | A | 0.781 | 0.612 | 0.481 | 0.890 | 0.539 | 0.818 |
+| KNN | B | 0.787 | 0.603 | 0.579 | 0.862 | 0.591 | 0.834 |
+| LR | B | 0.747 | 0.515 | **0.797** | 0.729 | 0.626 | 0.844 |
+| RF | B | 0.769 | 0.544 | 0.790 | 0.761 | **0.644** | 0.841 |
 
-**Baseline behaviour.** Without imbalance handling, all three models missed roughly half of the churners (recall 0.49–0.56). The baseline Random Forest shows classic **overfitting**: a training F1 of 0.997 against a CV F1 of 0.548, because fully grown trees memorise the training data. KNN with K = 5 had a smaller gap (0.136). LR's training and CV scores were almost equal, as expected of a simple, low-variance model.
+**Table 3 – Training vs test accuracy (overfitting check)**
 
-**Effect of tuning.** Tuning improved test F1 for every model: KNN +0.071, LR +0.015 and RF +0.086. Recall rose to about 0.79–0.83, so roughly four in five churners are now identified. The cost is precision of about 0.5 – roughly one false alarm per real churner flagged – and lower accuracy, which is the expected trade-off when the model stops favouring the majority class. The tuning curves (Figure 11) show the bias–variance trade-off. Increasing K closed KNN's train/CV gap, and limiting tree depth and leaf size removed most of the forest's variance (the train/CV gap fell from 0.449 to 0.083). LR was largely insensitive to C above 0.01.
+| Model | Setting | Train accuracy | Test accuracy | Gap |
+|---|---|---|---|---|
+| Majority class ("stay") | – | 0.735 | 0.735 | 0.000 |
+| KNN | A | 0.837 | 0.767 | 0.070 |
+| LR | A | 0.804 | 0.809 | −0.005 |
+| RF | A | 0.998 | 0.781 | **0.217** |
+| KNN | B | 0.809 | 0.787 | 0.021 |
+| LR | B | 0.749 | 0.747 | 0.002 |
+| RF | B | 0.816 | 0.769 | 0.047 |
 
-**Model comparison.** The tuned **Random Forest** achieved the best CV F1 (0.637, with the lowest variance across folds), the best test F1 (0.637), precision (0.531) and ROC-AUC (0.844), so it is selected as the final model. The margin is small, however: the tuned LR is within one standard deviation on CV F1 and has almost the same AUC (0.841), which shows that most of the signal is close to linear. KNN reached the highest recall (0.832) but the lowest precision and AUC, and it must compute distances to every training customer at prediction time. In a retention campaign where offers are cheap, KNN's extra recall could be acceptable. Where offers are expensive, RF's better precision is preferable, and LR is the best choice if explanations for each decision are required. Because each model outputs probabilities, the business can also move the decision threshold along the precision–recall curve (Figure 14) to match its campaign budget.
+**Baseline behaviour.** Without imbalance handling, all three models missed about half of the churners (recall 0.48–0.56) despite 77–81% accuracy, barely above the 73.5% majority baseline. The baseline Random Forest shows classic **overfitting**: 99.8% training accuracy against 78.1% test accuracy (Table 3), because fully grown trees memorise the training data. KNN (K = 5) had a smaller gap; LR had none, as expected of a simple, low-variance model.
 
-**Explainability.** All three methods agree with the EDA (Figures 15–16). In LR, a month-to-month contract multiplies the churn odds by 1.85 and fibre optic by 1.54, while tenure (coefficient −0.97) and a two-year contract (−0.72) protect against churn. The forest ranks month-to-month contract, tenure and charges highest. Permutation importance confirms that Contract, tenure and InternetService dominate, while gender contributes nothing.
+**Effect of tuning.** Tuning improved test F1 for every model: KNN +0.045, LR +0.017 and RF +0.105. For LR and RF, class weighting raised recall to 0.79–0.80, so four in five churners are now identified. The cost is precision of about 0.5 and lower specificity and accuracy – the expected trade-off when a model stops favouring the majority class. The tuning curves (Figure 11) show the bias–variance trade-off: larger K closed KNN's train/CV gap, and limiting tree depth and leaf size cut the forest's train/test accuracy gap from 22 to 5 points. LR was insensitive to C above 0.01.
 
-**Error analysis.** The 77 churners the forest missed differ sharply from the 297 it caught: median tenure 32 versus 5 months, 47% versus 99% on month-to-month contracts, and lower monthly charges. They look like loyal customers and probably leave for reasons not recorded in the data (relocation, competitor offers or service incidents).
+**Model comparison.** The tuned **Random Forest** achieved the best CV F1 (0.632) and test F1 (0.644), with recall 0.790 and better precision than LR, so it is selected. The margin is small: LR is within one standard deviation on CV F1, has the highest recall (0.797) and a marginally higher AUC (0.844), showing that most of the signal is close to linear. The tuned KNN is the most accurate tuned model (0.787) but catches only 58% of churners and is slow at prediction time. LR is preferable if each decision must be explained. Because the models output probabilities, the decision threshold can also be moved along the precision–recall curve (Figure 14) to match the campaign budget.
+
+**Explainability.** All three methods agree with the EDA (Figures 15–16). In LR, a month-to-month contract multiplies the churn odds by 1.84 and fibre optic by 1.44, while tenure (coefficient −1.00) and a two-year contract (−0.69) protect against churn. The forest ranks month-to-month contract, tenure and charges highest. Permutation importance confirms that Contract, tenure and InternetService dominate, while gender contributes nothing.
+
+**Error analysis.** The 118 churners the forest missed differ sharply from the 443 it caught: median tenure 31.5 versus 6 months, 50% versus 99% on month-to-month contracts, and lower monthly charges. They look like loyal customers and probably leave for reasons not recorded in the data (relocation, competitor offers or service incidents).
 
 ## 5. AI Ethics (Task 3)
 
 ### 5.1 Strategies followed during development
 - **Data minimisation and privacy (UK GDPR Art. 5):** `customerID` was removed, only attributes relevant to churn were used, and the public dataset contains no names or contact details.
-- **Fairness auditing:** recall, precision and flag rates were compared across gender and SeniorCitizen (age is a protected characteristic under the Equality Act 2010). Gender showed no meaningful disparity: the forest flags about 40% of both groups and recall differs by about 3 points. Seniors are flagged far more often (65% vs 35%) with higher recall (0.91 vs 0.75), but their false-alarm rate is about double. This is partly explained by their genuinely higher churn rate. It is documented rather than hidden, and senior status was kept because removing it would not remove proxies such as payment method.
+- **Fairness auditing:** recall, precision and flag rates were compared across gender and SeniorCitizen (age is a protected characteristic under the Equality Act 2010). Gender showed no meaningful disparity: the forest flags 38–39% of both groups with the same false-alarm rate (24%). Seniors are flagged far more often (62% vs 34%) with higher recall (0.88 vs 0.76), but double the false-alarm rate (41% vs 21%), partly reflecting their genuinely higher churn rate. This is documented rather than hidden; senior status was kept because removing it would not remove proxies such as payment method.
 - **Honest evaluation:** stratified splits, leakage-free pipelines, cross-validation with reported variance, a single use of the test set, and imbalance-aware metrics instead of an inflated accuracy figure.
 - **Transparency and explainability:** coefficients, feature and permutation importance are reported, and limitations are stated openly (BCS Code of Conduct: competence and integrity).
 - **Reproducibility and accountability:** fixed random seeds, pinned library versions, a public Git history and this report.
@@ -120,7 +132,7 @@ The positive class is churn. **F1** (the harmonic mean of precision and recall) 
 
 ## 7. Conclusion
 
-After careful cleaning, leakage-free preprocessing and imbalance-aware tuning, all three models identify around 80% of churners on unseen data. The tuned Random Forest performed best (F1 0.637, ROC-AUC 0.844), with Logistic Regression a close and more interpretable alternative. Contract type, tenure and internet service are the dominant churn drivers, which points to concrete retention levers such as converting month-to-month fibre customers to longer contracts during their first year. Deployment should keep humans in the loop and include continuous monitoring and fairness audits.
+After careful cleaning, leakage-free preprocessing and imbalance-aware tuning, the tuned Random Forest and Logistic Regression identify around 80% of churners on unseen data, while the more accurate KNN catches fewer. The tuned Random Forest performed best (F1 0.644, ROC-AUC 0.841), with Logistic Regression a close and more interpretable alternative. Contract type, tenure and internet service are the dominant churn drivers, which points to concrete retention levers such as converting month-to-month fibre customers to longer contracts during their first year. Deployment should keep humans in the loop and include continuous monitoring and fairness audits.
 
 ---
 

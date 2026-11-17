@@ -32,15 +32,17 @@ python tools/make_appendix.py     # regenerate the source-code appendix for the 
 
 ## 4. Methodology
 Cleaning: `TotalCharges` to numeric (11 blanks belong to tenure-0 customers and are set to 0), `customerID` dropped,
-"No internet/phone service" merged into "No", engineered `NumServices`. Stratified 80/20 split, then a
-`Pipeline` with `StandardScaler` + `OneHotEncoder` (no leakage). Imbalance: `class_weight="balanced"` (LR, RF), SMOTE (KNN).
+"No internet/phone service" merged into "No", engineered `NumServices`. Stratified 70/30 split (`test_size=0.3, random_state=42`, as in the labs), then a
+`Pipeline` with `StandardScaler` + `OneHotEncoder` (no leakage). Imbalance: `class_weight="balanced"` (LR, RF); SMOTE was searched for KNN but not selected.
 
 ## 5. Results (test set, tuned models)
-| Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
-|---|---|---|---|---|---|
-| KNN (K=41, Manhattan, SMOTE) | 0.727 | 0.492 | 0.832 | 0.618 | 0.828 |
-| Logistic Regression (C=0.1, L2, balanced) | 0.740 | 0.507 | 0.786 | 0.616 | 0.841 |
-| **Random Forest** (400 trees, depth 10, leaf 5, balanced) | 0.759 | 0.531 | 0.794 | **0.637** | **0.844** |
+| Model | Train acc. | Test acc. | Precision | Recall | Specificity | F1 | ROC-AUC |
+|---|---|---|---|---|---|---|---|
+| KNN (K=41, Manhattan) | 0.809 | 0.787 | 0.603 | 0.579 | 0.862 | 0.591 | 0.834 |
+| Logistic Regression (C=0.1, L2, balanced) | 0.749 | 0.747 | 0.515 | 0.797 | 0.729 | 0.626 | **0.844** |
+| **Random Forest** (400 trees, depth 10, leaf 10, balanced) | 0.816 | 0.769 | 0.544 | 0.790 | 0.761 | **0.644** | 0.841 |
+
+Test set = 2,113 customers (30%). Majority-class baseline accuracy = 0.735.
 
 Main churn drivers: month-to-month contract, short tenure, fibre-optic internet, electronic-check payment.
 

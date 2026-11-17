@@ -394,7 +394,7 @@ print(f"{len(num_cols)} numeric:", num_cols)
 print(f"{len(cat_cols)} categorical:", cat_cols)
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.20, stratify=y, random_state=SEED)
+    X, y, test_size=0.30, stratify=y, random_state=SEED)   # 70% train / 30% test, as in the labs
 
 print("\nTrain:", X_train.shape, " Test:", X_test.shape)
 print(f"Churn rate  train {y_train.mean():.3f} | test {y_test.mean():.3f} | full {y.mean():.3f}")
@@ -425,10 +425,11 @@ def test_metrics(model, name, setting):
     """Score a fitted model ONCE on the held-out test set."""
     pred = model.predict(X_test)
     proba = model.predict_proba(X_test)[:, 1]
+    tn, fp, fn, tp = confusion_matrix(y_test, pred).ravel()
     return {"model": name, "setting": setting,
             "accuracy": accuracy_score(y_test, pred), "precision": precision_score(y_test, pred),
-            "recall": recall_score(y_test, pred), "f1": f1_score(y_test, pred),
-            "roc_auc": roc_auc_score(y_test, proba)}
+            "recall": recall_score(y_test, pred), "specificity": tn / (tn + fp),
+            "f1": f1_score(y_test, pred), "roc_auc": roc_auc_score(y_test, proba)}
 
 cv_rows, test_rows, fitted = [], [], {}
 ```
@@ -565,16 +566,16 @@ cv_view.round(3)
 ```python
 test_table = pd.DataFrame(test_rows).sort_values(["setting", "model"])
 test_table.to_csv(RES_DIR / "test_results.csv", index=False)
-print("Final scores on the untouched TEST set (1,409 customers)")
+print(f"Final scores on the untouched TEST set ({len(X_test):,} customers)")
 test_table.round(3)
 ```
 
 **Cell 10**
 
 ```python
-plot_df = test_table.melt(id_vars=["model", "setting"], value_vars=["accuracy", "precision", "recall", "f1", "roc_auc"],
+plot_df = test_table.melt(id_vars=["model", "setting"], value_vars=["accuracy", "precision", "recall", "specificity", "f1", "roc_auc"],
                           var_name="metric", value_name="score")
-g = sns.catplot(data=plot_df, x="metric", y="score", hue="setting", col="model", kind="bar", height=4, aspect=1.1)
+g = sns.catplot(data=plot_df, x="metric", y="score", hue="setting", col="model", kind="bar", height=4, aspect=1.3)
 g.set(ylim=(0, 1))
 for ax in g.axes.flat:
     for cont in ax.containers:
@@ -584,6 +585,25 @@ plt.savefig(FIG_DIR / "12_baseline_vs_tuned.png", dpi=150, bbox_inches="tight");
 ```
 
 **Cell 11**
+
+```python
+from sklearn.dummy import DummyClassifier
+
+majority = DummyClassifier(strategy="most_frequent").fit(X_train, y_train)
+acc_rows = [{"model": "Majority class (always 'stay')", "setting": "-",
+             "train_accuracy": accuracy_score(y_train, majority.predict(X_train)),
+             "test_accuracy": accuracy_score(y_test, majority.predict(X_test))}]
+for (name, setting), model in fitted.items():
+    acc_rows.append({"model": name, "setting": setting,
+                     "train_accuracy": accuracy_score(y_train, model.predict(X_train)),
+                     "test_accuracy": accuracy_score(y_test, model.predict(X_test))})
+acc_table = pd.DataFrame(acc_rows)
+acc_table["gap (train - test)"] = acc_table["train_accuracy"] - acc_table["test_accuracy"]
+acc_table.to_csv(RES_DIR / "accuracy_train_vs_test.csv", index=False)
+acc_table.round(3)
+```
+
+**Cell 12**
 
 ```python
 names = list(search_space)
@@ -601,7 +621,23 @@ for name in names:
     print(classification_report(y_test, fitted[(name, "B: tuned")].predict(X_test), target_names=["Stay", "Churn"], digits=3))
 ```
 
-**Cell 12**
+**Cell 13**
+
+```python
+# Week 7 style: read TN, FP, FN, TP off the confusion matrix and compute every metric BY HAND
+for name in names:
+    tn, fp, fn, tp = confusion_matrix(y_test, fitted[(name, "B: tuned")].predict(X_test)).ravel()
+    print(f"{name} (tuned):  TP={tp}  FP={fp}  FN={fn}  TN={tn}  (total {tp + fp + fn + tn})")
+    acc = (tp + tn) / (tp + tn + fp + fn); prec = tp / (tp + fp); rec = tp / (tp + fn); spec = tn / (tn + fp)
+    print(f"   accuracy    = ({tp} + {tn}) / {tp + tn + fp + fn} = {acc:.3f}")
+    print(f"   precision   = {tp} / ({tp} + {fp}) = {prec:.3f}")
+    print(f"   recall      = {tp} / ({tp} + {fn}) = {rec:.3f}")
+    print(f"   specificity = {tn} / ({tn} + {fp}) = {spec:.3f}")
+    print(f"   F1          = 2 x {prec:.3f} x {rec:.3f} / ({prec:.3f} + {rec:.3f}) = {2 * prec * rec / (prec + rec):.3f}")
+    print()
+```
+
+**Cell 14**
 
 ```python
 fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
@@ -614,7 +650,7 @@ axes[1].axhline(y_test.mean(), ls="--", c="k", label=f"random (= churn rate {y_t
 save("14_roc_pr_curves")
 ```
 
-**Cell 13**
+**Cell 15**
 
 ```python
 lr = fitted[("Logistic Regression", "B: tuned")]
@@ -636,7 +672,7 @@ print("Odds ratios (e^coef) for the 5 strongest positive coefficients:")
 print(np.exp(coefs.nlargest(5)).round(2))
 ```
 
-**Cell 14**
+**Cell 16**
 
 ```python
 perm_rows = {}
@@ -654,7 +690,7 @@ save("16_permutation_importance")
 perm.head(10).round(3)
 ```
 
-**Cell 15**
+**Cell 17**
 
 ```python
 best_name = test_table[test_table.setting == "B: tuned"].sort_values("f1", ascending=False).iloc[0]["model"]
@@ -674,7 +710,7 @@ summary = churners.groupby("outcome").agg(
 summary.round(2)
 ```
 
-**Cell 16**
+**Cell 18**
 
 ```python
 fair_rows = []
